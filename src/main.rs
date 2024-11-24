@@ -19,6 +19,10 @@ fn main() {
     for i in 0..4 {
         println!("Partition {i}:");
         reader.read_exact(&mut buf).expect("Error reading");
+        if buf.into_iter().reduce(|a,b| a | b).unwrap() == 0 {
+            println!("Zero\n");
+            continue;
+        }
         let part = Partition::unpack(&buf).expect("unpack");
         println!("{part:?}");
     }
