@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 packed_struct = "0.10.1"
+libc = "0.2"
