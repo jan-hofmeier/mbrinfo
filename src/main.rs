@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::{self, BufReader, Read, Seek, SeekFrom, Write}, process::exit};
 
-use mbrinfo::{Partition, Bpb, Bpb32, FatType, format_alignment};
+use mbrinfo::{Partition, Bpb, Bpb32, FatType, format_alignment, format_size};
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 #[cfg(target_os = "linux")]
@@ -165,11 +165,12 @@ fn analyze_fat<R: Read + Seek>(reader: &mut R, part: &Partition, part_offset: u6
 
     let b_per_s = bpb.bytes_per_sector as u64;
 
-    // FATs alignment
+    // FATs alignment and size
     for f in 0..bpb.num_fats {
         let fat_rel_offset = (bpb.reserved_sectors as u64 + f as u64 * fat_size as u64) * b_per_s;
         let fat_abs_offset = part_offset + fat_rel_offset;
         println!("FAT {} Offset: relative {}, absolute {}", f, fat_rel_offset, fat_abs_offset);
+        println!("  Size: {} sectors ({})", fat_size, format_size(fat_size as u64 * b_per_s));
         println!("  Relative Alignment: {}", format_alignment(fat_rel_offset));
         println!("  Absolute Alignment: {}", format_alignment(fat_abs_offset));
     }
@@ -180,6 +181,7 @@ fn analyze_fat<R: Read + Seek>(reader: &mut R, part: &Partition, part_offset: u6
             let root_rel_offset = (bpb.reserved_sectors as u64 + bpb.num_fats as u64 * fat_size as u64) * b_per_s;
             let root_abs_offset = part_offset + root_rel_offset;
             println!("Root Directory Offset: relative {}, absolute {}", root_rel_offset, root_abs_offset);
+            println!("  Size: {} sectors ({})", root_dir_sectors, format_size(root_dir_sectors as u64 * b_per_s));
             println!("  Relative Alignment: {}", format_alignment(root_rel_offset));
             println!("  Absolute Alignment: {}", format_alignment(root_abs_offset));
         }
@@ -190,6 +192,7 @@ fn analyze_fat<R: Read + Seek>(reader: &mut R, part: &Partition, part_offset: u6
     let data_rel_offset = (bpb.reserved_sectors as u64 + bpb.num_fats as u64 * fat_size as u64 + root_dir_sectors as u64) * b_per_s;
     let data_abs_offset = part_offset + data_rel_offset;
     println!("Data Area Offset: relative {}, absolute {}", data_rel_offset, data_abs_offset);
+    println!("  Size: {} sectors ({})", data_sectors, format_size(data_sectors as u64 * b_per_s));
     println!("  Relative Alignment: {}", format_alignment(data_rel_offset));
     println!("  Absolute Alignment: {}", format_alignment(data_abs_offset));
 }
