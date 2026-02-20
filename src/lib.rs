@@ -40,8 +40,36 @@ pub struct Partition {
   pub size_lba: u32,
 }
 
-fn lba_to_mb(lba: u32) -> u32{
-  (lba as u64 * 512 / 1024 / 1024) as u32
+pub fn format_human_readable(bytes: u64) -> String {
+    let units = ["bytes", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    if bytes == 0 {
+        return "0 bytes".to_string();
+    }
+
+    let mut size = bytes as f64;
+    let mut unit_idx = 0;
+
+    while size >= 1024.0 && unit_idx < units.len() - 1 {
+        size /= 1024.0;
+        unit_idx += 1;
+    }
+
+    if unit_idx == 0 {
+        return format!("{} bytes", bytes);
+    }
+
+    let unit_value = 1024u64.pow(unit_idx as u32);
+    let is_exact = bytes % unit_value == 0;
+
+    if is_exact {
+        format!("{} {}", size, units[unit_idx])
+    } else {
+        format!("~{:.1} {}", size, units[unit_idx])
+    }
+}
+
+pub fn format_sectors(sectors: u64) -> String {
+    format!("{}s", sectors)
 }
 
 pub fn format_alignment(offset: u64) -> String {
@@ -125,9 +153,31 @@ impl fmt::Debug for Partition {
 start C/H/S: {:?}
 type: {:#x}
 end   C/H/S: {:?}
-start lba: {} ({} MB)
-size  lba: {} ({} MB)\n",
+start lba: {} ({})
+size  lba: {} ({})\n",
           self.active, self.start_chs, self.part_type, self.end_chs, 
-          self.start_lba, lba_to_mb(self.start_lba), self.size_lba, lba_to_mb(self.size_lba) )
+          format_sectors(self.start_lba as u64), format_human_readable(self.start_lba as u64 * 512),
+          format_sectors(self.size_lba as u64), format_human_readable(self.size_lba as u64 * 512) )
   }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_human_readable() {
+        assert_eq!(format_human_readable(0), "0 bytes");
+        assert_eq!(format_human_readable(512), "512 bytes");
+        assert_eq!(format_human_readable(1024), "1 KiB");
+        assert_eq!(format_human_readable(1536), "~1.5 KiB");
+        assert_eq!(format_human_readable(1024 * 1024), "1 MiB");
+        assert_eq!(format_human_readable(1024 * 1024 + 512 * 1024), "~1.5 MiB");
+    }
+
+    #[test]
+    fn test_format_sectors() {
+        assert_eq!(format_sectors(0), "0s");
+        assert_eq!(format_sectors(2048), "2048s");
+    }
 }
