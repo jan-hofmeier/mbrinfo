@@ -1,6 +1,6 @@
 use std::{env, fs::File, io::{self, BufReader, Read, Seek, SeekFrom, Write}, process::exit};
 
-use mbrinfo::{Partition, Bpb, Bpb32, FatType, format_alignment};
+use mbrinfo::{Partition, Bpb, Bpb32, FatType, format_alignment, format_human_readable, format_sectors};
 use packed_struct::{PackedStruct, PackedStructSlice};
 
 #[cfg(target_os = "linux")]
@@ -83,12 +83,12 @@ fn main() {
         println!("Partition Alignment: {}", format_alignment(part_offset));
 
         // Try to analyze FAT
-        analyze_fat(&mut reader, &part, part_offset);
+        analyze_fat(&mut reader, &part, part_offset, sector_size);
         println!();
     }
 }
 
-fn analyze_fat<R: Read + Seek>(reader: &mut R, part: &Partition, part_offset: u64) {
+fn analyze_fat<R: Read + Seek>(reader: &mut R, part: &Partition, part_offset: u64, mbr_sector_size: u32) {
     if let Err(_) = reader.seek(SeekFrom::Start(part_offset)) {
         return;
     }
@@ -111,6 +111,10 @@ fn analyze_fat<R: Read + Seek>(reader: &mut R, part: &Partition, part_offset: u6
 
     if bpb.bytes_per_sector == 0 {
         return;
+    }
+
+    if bpb.bytes_per_sector as u32 != mbr_sector_size {
+        println!("Warning: BPB sector size ({}) differs from MBR sector size ({})", bpb.bytes_per_sector, mbr_sector_size);
     }
 
     // Determine FAT type
@@ -165,31 +169,58 @@ fn analyze_fat<R: Read + Seek>(reader: &mut R, part: &Partition, part_offset: u6
 
     let b_per_s = bpb.bytes_per_sector as u64;
 
-    // FATs alignment
+    // Reserved Area
+    let reserved_rel_offset = 0u64;
+    let reserved_abs_offset = part_offset;
+    let reserved_size = bpb.reserved_sectors as u64 * b_per_s;
+    println!("Reserved Area:");
+    println!("  Offset: relative {} ({}), absolute {} ({})",
+        format_sectors(reserved_rel_offset / b_per_s), format_human_readable(reserved_rel_offset),
+        format_sectors(reserved_abs_offset / b_per_s), format_human_readable(reserved_abs_offset));
+    println!("  Size:   {} ({})", format_sectors(reserved_size / b_per_s), format_human_readable(reserved_size));
+    println!("  Relative Alignment: {}", format_alignment(reserved_rel_offset));
+    println!("  Absolute Alignment: {}", format_alignment(reserved_abs_offset));
+
+    // FATs
     for f in 0..bpb.num_fats {
         let fat_rel_offset = (bpb.reserved_sectors as u64 + f as u64 * fat_size as u64) * b_per_s;
         let fat_abs_offset = part_offset + fat_rel_offset;
-        println!("FAT {} Offset: relative {}, absolute {}", f, fat_rel_offset, fat_abs_offset);
+        let fat_actual_size = fat_size as u64 * b_per_s;
+        println!("FAT {}:", f);
+        println!("  Offset: relative {} ({}), absolute {} ({})",
+            format_sectors(fat_rel_offset / b_per_s), format_human_readable(fat_rel_offset),
+            format_sectors(fat_abs_offset / b_per_s), format_human_readable(fat_abs_offset));
+        println!("  Size:   {} ({})", format_sectors(fat_actual_size / b_per_s), format_human_readable(fat_actual_size));
         println!("  Relative Alignment: {}", format_alignment(fat_rel_offset));
         println!("  Absolute Alignment: {}", format_alignment(fat_abs_offset));
     }
 
-    // Root Directory alignment (only FAT12/16)
+    // Root Directory (only FAT12/16)
     match fat_type {
         FatType::Fat12 | FatType::Fat16 => {
             let root_rel_offset = (bpb.reserved_sectors as u64 + bpb.num_fats as u64 * fat_size as u64) * b_per_s;
             let root_abs_offset = part_offset + root_rel_offset;
-            println!("Root Directory Offset: relative {}, absolute {}", root_rel_offset, root_abs_offset);
+            let root_size = root_dir_sectors as u64 * b_per_s;
+            println!("Root Directory:");
+            println!("  Offset: relative {} ({}), absolute {} ({})",
+                format_sectors(root_rel_offset / b_per_s), format_human_readable(root_rel_offset),
+                format_sectors(root_abs_offset / b_per_s), format_human_readable(root_abs_offset));
+            println!("  Size:   {} ({})", format_sectors(root_size / b_per_s), format_human_readable(root_size));
             println!("  Relative Alignment: {}", format_alignment(root_rel_offset));
             println!("  Absolute Alignment: {}", format_alignment(root_abs_offset));
         }
         FatType::Fat32 => {}
     }
 
-    // Data Area alignment
+    // Data Area
     let data_rel_offset = (bpb.reserved_sectors as u64 + bpb.num_fats as u64 * fat_size as u64 + root_dir_sectors as u64) * b_per_s;
     let data_abs_offset = part_offset + data_rel_offset;
-    println!("Data Area Offset: relative {}, absolute {}", data_rel_offset, data_abs_offset);
+    let data_size = data_sectors as u64 * b_per_s;
+    println!("Data Area:");
+    println!("  Offset: relative {} ({}), absolute {} ({})",
+        format_sectors(data_rel_offset / b_per_s), format_human_readable(data_rel_offset),
+        format_sectors(data_abs_offset / b_per_s), format_human_readable(data_abs_offset));
+    println!("  Size:   {} ({})", format_sectors(data_size / b_per_s), format_human_readable(data_size));
     println!("  Relative Alignment: {}", format_alignment(data_rel_offset));
     println!("  Absolute Alignment: {}", format_alignment(data_abs_offset));
 }
